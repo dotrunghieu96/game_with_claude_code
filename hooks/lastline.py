@@ -31,7 +31,6 @@ LANGS = {".py": ("python", "#"), ".js": ("javascript", "//"), ".ts": ("typescrip
          ".swift": ("swift", "//"), ".scala": ("scala", "//"), ".lua": ("lua", "--"),
          ".yaml": ("yaml", "#"), ".yml": ("yaml", "#"), ".tf": ("hcl", "#")}
 
-BORING = re.compile(r"^\s*($|[}\]){\[(]+;?$|#|//|import |from |\*|<!--)")
 SKIP_FILES = re.compile(r"(lock|\.min\.|\.lock$|/(dist|build|node_modules|vendor)/|\.snap$)")
 
 
@@ -115,35 +114,6 @@ def added_lines(old, new):
     return out
 
 
-# Decision lines: a judgement with few valid spellings (design.md §4).
-SIGNALS = (
-    (re.compile(r"[<>]=?|==|!="), 3),
-    (re.compile(r"\b(retry|retries|backoff|timeout|deadline|ttl|expire)\b", re.I), 3),
-    (re.compile(r"\b(except|catch|rescue|raise|throw|error|err)\b", re.I), 2),
-    (re.compile(r"\b(lock|acquire|release|mutex|atomic|order)\b", re.I), 2),
-    (re.compile(r"\b(if|elif|while|unless)\b"), 1),
-    (re.compile(r"\b(key|cache|hash|bucket)\b", re.I), 1),
-)
-LOOKUP = re.compile(r"""["'`]|\w+\.\w+\.\w+|\(.*,.*,""")  # literals, deep chains, many args
-
-
-def score(line):
-    s = line.strip()
-    if BORING.match(line) or len(s) < 8 or len(s) > 90:
-        return 0
-    total = sum(w for rx, w in SIGNALS if rx.search(s))
-    if LOOKUP.search(s):
-        total -= 2  # needs recall, not judgement
-    return total
-
-
-def pick_local(candidates):
-    """Fallback only. Regexes find comparisons, not decisions (dogfood, 2026-09-17)."""
-    scored = [(score(t), i, t) for i, t in candidates]
-    best = max(scored, default=(0, 0, ""))
-    return (best[1], best[2]) if best[0] >= 3 else None
-
-
 PICK_PROMPT = """You are choosing one line of a code change for a human to write themselves.
 
 Pick a line where a competent engineer could reasonably have written something DIFFERENT,
@@ -200,7 +170,7 @@ def pick_model(ti, candidates):
         log(f"picker declined ({data.get('line')!r})")
         return None
     log(f"picker chose {idx}: {data.get('why')!r} alt={data.get('alternative')!r}")
-    return idx, lines[idx]
+    return idx, lines[idx], (data.get("alternative") or "")
 
 
 # ---------- grading ----------
@@ -337,10 +307,13 @@ def resolve(pending, ti, session_id, state):
     save_state(session_id, state)
     log(f"resolved {v} tampered={tampered} theirs={norm(theirs)!r} ours={norm(ours)!r}")
 
-    mark = {"same": "  \u2022 same", "close": "  \u2022 close", "different": ""}[v]
-    reveal = f"""  lastline
-    yours   {norm(theirs)}
-    mine    {norm(ours)}{mark}"""
+    mark = {"same": "\n    \u2022 same", "close": "\n    \u2022 close", "different": ""}[v]
+    rows = [f"    yours   {norm(theirs)}", f"    mine    {norm(ours)}"]
+    alt = norm(pending.get("alt", ""))
+    # the fork the picker saw - it is what makes a match mean anything
+    if alt and alt not in (norm(theirs), norm(ours)):
+        rows.append(f"    or      {alt}")
+    reveal = "  lastline\n" + "\n".join(rows) + mark
     tamper_note = "\n(NOTE: the rest of the edit changed too. Tell them.)" if tampered else ""
     agent = f"""Allowed. Their line is in, and they have already been shown both versions -
 do not repeat them.
@@ -390,11 +363,11 @@ def main():
     if chosen is None:
         allow("no decision line")
 
-    idx, line = chosen
+    idx, line, alt = chosen
     spend()
     state["pending"] = {
         "file_path": path, "old_string": ti.get("old_string", ""),
-        "new_string": ti.get("new_string", ""), "idx": idx, "line": line,
+        "new_string": ti.get("new_string", ""), "idx": idx, "line": line, "alt": alt,
         "at": datetime.datetime.now().timestamp(),
     }
     save_state(session_id, state)

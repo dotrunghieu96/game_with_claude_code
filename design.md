@@ -102,6 +102,11 @@ that arrived with an empty budget, and tune N and the bar from that.
 Tetris clears singles constantly with a blip and saves the flash for the four-line, which
 is rare and which you set up on purpose. Lastline is graded the same way.
 
+**Show the fork, not just the answer.** The picker has to name an `alternative` to prove a
+decision existed, so the reveal shows it: yours, mine, and the other way it could have
+gone. That is what makes a match mean anything - without it, `same` reads as "you agreed
+with the agent" rather than "there were two real options and you took this one".
+
 **In the moment, quiet.** `same` and `close` get a small mark. `different` gets the reveal
 and nothing else. Deliberately underweighted — matching the agent means you predicted the
 agent, and rewarding that loudly trains mimicry, which is the muscle this tool rejected.
