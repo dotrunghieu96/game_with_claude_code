@@ -17,13 +17,15 @@ existing Claude Code auth, so there is no API key to set.
 
 Copy the hook into your project and register it:
 
+<!-- x-release-please-start-version -->
 ```bash
 mkdir -p hooks .claude
-curl -o hooks/lastline.py https://raw.githubusercontent.com/dotrunghieu96/game_with_claude_code/master/hooks/lastline.py
+curl -o hooks/lastline.py https://raw.githubusercontent.com/dotrunghieu96/game_with_claude_code/v0.1.0/hooks/lastline.py
 chmod +x hooks/lastline.py
 ```
+<!-- x-release-please-end -->
 
-Swap `master` for a tag from [Releases](../../releases) to pin a version.
+That pins the latest release. Swap the tag for `master` to track unreleased work.
 
 ```json
 {
@@ -93,7 +95,8 @@ On push to `master`, release-please opens or updates a release PR that accrues t
 changelog. Merging it tags, cuts the GitHub release, and bumps `VERSION` in the hook —
 which the log prints beside every decision, so a log line says which version made it.
 
-`CHANGELOG.md`, `version.txt` and `VERSION` belong to release-please. Do not hand-edit them.
+`CHANGELOG.md`, `version.txt`, `VERSION` in the hook and the tag in the install command
+belong to release-please. Do not hand-edit them.
 
 ## Layout
 
