@@ -3,7 +3,7 @@
 Supersedes `idea.md`. That brief is kept as the record of the original thinking; where the
 two disagree, this document wins.
 
-Status: pre-v0, nothing built.
+Status: pre-v0. Hook working; see §11.
 
 ## The goal
 
@@ -86,16 +86,51 @@ Cost, accepted: the audited party learns when it is being audited. Mitigated by 
 only *after* the cut, per edit, never as a standing instruction — it cannot write bait for
 a line it does not know will be taken.
 
-## 6. A hard daily budget
+## 6. Intensity: a hard daily budget, on a dial
 
-N per day, start at 3. Spend on the first N qualifying lines, then silence until tomorrow.
+N per day, default 3. Spend on the first N qualifying lines, then silence until tomorrow.
 
 This replaces the clock. Interruption cost is governed by how often, not how long — once
 you are in it, take the time you need.
 
+One dial moves frequency and nothing else: `off`, `light`, `normal`, `heavy`, `annoying`.
+**The picker's bar is the same at every setting.** A setting that loosened what counts as a
+fork would be manufacturing decisions to have something to fire on, which is the one thing
+§4 forbids. So a tighter setting buys itself more forks a different way: it caps how much
+the agent may change in one edit, and denies anything larger with *split this into edits of
+one concern each*. Smaller edits are better anyway; the dial just makes that binding.
+
+| | per day | cooldown | max added lines |
+|---|---|---|---|
+| `off` | 0 | — | — |
+| `light` | 1 | 4h | 80 |
+| `normal` | 3 | 1h | 40 |
+| `heavy` | 8 | 2m | 25 |
+| `annoying` | every edit | 0 | 25 |
+
+The cap is gated exactly like a fire — off, out of budget or cooling down means no deny.
+The hook asks once: the same oversized edit sent twice goes through, because a hook that
+can refuse forever is a hook that hangs the session.
+
 Known failure: the budget burns on the morning's trivia and the afternoon's good line
 passes in silence. The log is the fix — record every qualifying line, including the ones
 that arrived with an empty budget, and tune N and the bar from that.
+
+## 6b. Hints are a second dial
+
+`veteran` / `normal` / `amateur`, independent of intensity. Frequency is how much
+interruption you will take; hints are how much you know about the code in front of you, and
+a veteran on an unfamiliar repo wants both dials high.
+
+| | the relay gives them |
+|---|---|
+| `veteran` | one sentence of intent, before/after, call sites |
+| `normal` | + types in play, what the surrounding lines expect, options named |
+| `amateur` | + what the line must do in plain words, what each option changes at runtime |
+
+At every level: hint further on request, never write the line. The dogfood finding stands —
+the answer leaks anyway, so withholding buys nothing, and a blank they cannot approach is a
+failure of the hint rather than a win.
 
 ## 7. The celebration
 
@@ -219,7 +254,7 @@ that, it declines a pure-lookup diff, declines the boring cooldown line it had b
 picking, and finds the real fork in an error-handling change. The regex picker is gone -
 it scored comparisons, not decisions, and on model failure the hook now just allows.
 
-Code lives in `hooks/lastline.py`, registered in `.claude/settings.json`. Working: picker,
-daily budget, fire/resolve round trip, three verdicts with off-by-one forced to
-*different*, decision log. Not built: the model picker, the cooldown, the `Stop`-hook
-survival flash.
+Code lives in `hooks/lastline.py`, registered in `.claude/settings.json`, exercised by
+`hooks/test_lastline.py`. Working: model picker, intensity and hint dials, the oversize
+deny, budget and cooldown, fire/resolve round trip, three verdicts with off-by-one forced
+to *different*, the `Stop`-hook survival flash, decision log.

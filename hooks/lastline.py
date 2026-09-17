@@ -7,6 +7,7 @@ re-apply with their line. The hook keeps the original and grades what comes back
 """
 import datetime
 import difflib
+import hashlib
 import json
 import os
 import re
@@ -16,12 +17,25 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 LOG = os.path.join(HERE, "lastline.log")
-BUDGET_FILE = os.path.join(HERE, ".budget.json")
-DAILY_BUDGET = int(os.environ.get("LASTLINE_BUDGET", "3"))
+BUDGET_FILE = os.environ.get("LASTLINE_BUDGET_FILE") or os.path.join(HERE, ".budget.json")
 PENDING_TTL = 600  # a puzzle the agent never resolved is dead after 10 min
-COOLDOWN = int(os.environ.get("LASTLINE_COOLDOWN", "900"))
 MODEL = os.environ.get("LASTLINE_MODEL", "claude-opus-5")
 PICK_TIMEOUT = int(os.environ.get("LASTLINE_PICK_TIMEOUT", "45"))
+
+# How often, not how hard: the picker's bar is the same at every intensity.
+# A tighter setting buys itself more forks to pick from by capping the edit smaller.
+INTENSITY = {
+    "off":      {"budget": 0,    "cooldown": 0,     "max_added": 0},
+    "light":    {"budget": 1,    "cooldown": 14400, "max_added": 80},
+    "normal":   {"budget": 3,    "cooldown": 3600,  "max_added": 40},
+    "heavy":    {"budget": 8,    "cooldown": 120,   "max_added": 25},
+    "annoying": {"budget": 9999, "cooldown": 0,     "max_added": 25},
+}
+LEVEL = INTENSITY.get(os.environ.get("LASTLINE_INTENSITY", "normal").lower(), INTENSITY["normal"])
+DAILY_BUDGET = int(os.environ.get("LASTLINE_BUDGET", LEVEL["budget"]))
+COOLDOWN = int(os.environ.get("LASTLINE_COOLDOWN", LEVEL["cooldown"]))
+MAX_ADDED = int(os.environ.get("LASTLINE_MAX_ADDED", LEVEL["max_added"]))
+HINTS = os.environ.get("LASTLINE_HINTS", "normal").lower()
 
 LANGS = {".py": ("python", "#"), ".js": ("javascript", "//"), ".ts": ("typescript", "//"),
          ".tsx": ("tsx", "//"), ".jsx": ("jsx", "//"), ".go": ("go", "//"),
@@ -242,6 +256,24 @@ def call_sites(name, skip_path, limit=6):
     return hits
 
 
+HINT_BLOCKS = {
+    "veteran": """Above them, give ONE short sentence saying what the whole edit is for.
+Change-level only - the goal you were asked to achieve.{fork} That is all they get unasked.""",
+    "normal": """Above them, give ONE short sentence saying what the whole edit is for, then
+hints: what the surrounding lines expect, which types are in play, and what the competing
+options are.{fork} Name the options, do not pick one.""",
+    "amateur": """Above them, say in plain words what the whole edit is for and what this one
+line has to do - what it receives, what the lines after it need from it. Then name the
+competing options and, for each, what someone running the code would actually see
+differently.{fork} Name them all, do not pick one.""",
+}
+
+
+def hint_block(why=""):
+    fork = f" The fork the picker saw: {why}." if why else ""
+    return HINT_BLOCKS.get(HINTS, HINT_BLOCKS["normal"]).format(fork=fork)
+
+
 def puzzle(ti, idx, line, why=""):
     """Before/after, because a hole with no intent is unwritable (dogfood, 2026-09-17)."""
     path = ti.get("file_path", "?")
@@ -263,7 +295,6 @@ def puzzle(ti, idx, line, why=""):
         used = f"\n\n`{name}` is not referenced anywhere else in the project."
     else:
         used = ""
-    fork = f" The fork the picker saw: {why}." if why else ""
     return f"""LASTLINE is holding this edit. Do not retry it as-is.
 
 Ask the human to write one line of it themselves. Show them this and nothing else:
@@ -283,9 +314,7 @@ after
 {used}
 
 Relay all of the above exactly as it is, fences and language tag included, so
-they render highlighted. Above them, give ONE short sentence saying what the whole edit is
-for, then hints: what the surrounding lines expect, which types are in play, and what the
-competing options are.{fork} Name the options, do not pick one.
+they render highlighted. {hint_block(why)}
 
 Rules:
 - Do not write the line for them. Hint as much as they ask for - typing it is the point, not
@@ -399,6 +428,21 @@ def main():
         allow("cooling down")
     if left <= 0:
         allow("budget spent")
+
+    if len(cands) > MAX_ADDED:
+        # hash() is salted per process and the hook is a new process each edit
+        key = path + ":" + hashlib.sha1(ti.get("new_string", "").encode()).hexdigest()
+        if state.get("denied_size") == key:
+            state.pop("denied_size", None)   # asked once; a second deny is a loop
+            save_state(session_id, state)
+            allow(f"too big ({len(cands)} added), already asked")
+        state["denied_size"] = key
+        save_state(session_id, state)
+        respond("deny", f"""{len(cands)} lines at once is more than anyone reads.
+
+Split this into edits of one concern each - the smallest chunk that stands on its own and
+leaves the file working - and apply them one at a time. Do not re-send this edit whole.""")
+    state.pop("denied_size", None)
 
     chosen = pick_model(ti, cands)
     if chosen is None:
