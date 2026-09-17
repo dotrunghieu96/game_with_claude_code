@@ -19,7 +19,7 @@ Copy the hook into your project and register it:
 
 ```bash
 mkdir -p hooks .claude
-curl -o hooks/lastline.py https://raw.githubusercontent.com/<you>/lastline/master/hooks/lastline.py
+curl -o hooks/lastline.py https://raw.githubusercontent.com/dotrunghieu96/game_with_claude_code/master/hooks/lastline.py
 chmod +x hooks/lastline.py
 ```
 
