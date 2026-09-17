@@ -20,7 +20,7 @@ Copy the hook into your project and register it:
 <!-- x-release-please-start-version -->
 ```bash
 mkdir -p hooks .claude
-curl -o hooks/lastline.py https://raw.githubusercontent.com/dotrunghieu96/game_with_claude_code/lastline-v0.1.0/hooks/lastline.py
+curl -o hooks/lastline.py https://raw.githubusercontent.com/dotrunghieu96/game_with_claude_code/lastline-v0.1.1/hooks/lastline.py
 chmod +x hooks/lastline.py
 ```
 <!-- x-release-please-end -->

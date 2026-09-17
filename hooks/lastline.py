@@ -15,7 +15,7 @@ import sys
 import subprocess
 import tempfile
 
-VERSION = "0.1.0"  # x-release-please-version
+VERSION = "0.1.1"  # x-release-please-version
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 LOG = os.path.join(HERE, "lastline.log")
