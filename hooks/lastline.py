@@ -340,10 +340,16 @@ def on_stop(payload):
     session_id = payload.get("session_id", "")
     state = load_state(session_id)
     still = [e for e in state.get("standing", []) if survived(e)]
-    try:
-        os.remove(state_path(session_id))
-    except OSError:
-        pass
+    # Stop fires at the end of every turn, and asking them costs a turn - so an open
+    # puzzle has to outlive it, or it can never be answered (dogfood, 2026-09-17).
+    pending = state.get("pending")
+    if pending and datetime.datetime.now().timestamp() - pending["at"] < PENDING_TTL:
+        save_state(session_id, {"pending": pending})
+    else:
+        try:
+            os.remove(state_path(session_id))
+        except OSError:
+            pass
     if not still:
         sys.exit(0)
     rows = "\n".join(f"    {os.path.basename(e['file'])}   {e['line']}" for e in still)
