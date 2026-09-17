@@ -44,7 +44,8 @@ That pins the latest release. Swap the tag for `master` to track unreleased work
 }
 ```
 
-That goes in `.claude/settings.json`. The 300s `PreToolUse` timeout covers the picker call
+That goes in `.claude/settings.json` for one project, or `~/.claude/settings.json`
+with an absolute path (`$HOME/.claude/hooks/lastline.py`) to run it everywhere. The 300s `PreToolUse` timeout covers the picker call
 (9–16s) plus the round trip while you think. Add `hooks/lastline.log` and
 `hooks/.budget.json` to `.gitignore`.
 
@@ -81,7 +82,8 @@ know about the code, not by how often you want interrupting.
 At every level the agent will hint further if you ask, and at none of them will it write
 the line for you.
 
-Raw overrides, if the presets do not fit: `LASTLINE_BUDGET`, `LASTLINE_COOLDOWN` (seconds),
+Both go in the `env` block of the same `settings.json`. Raw overrides, if the presets
+do not fit: `LASTLINE_BUDGET`, `LASTLINE_COOLDOWN` (seconds),
 `LASTLINE_MAX_ADDED`, `LASTLINE_MODEL`, `LASTLINE_PICK_TIMEOUT`.
 
 ## Releasing
@@ -104,7 +106,6 @@ belong to release-please. Do not hand-edit them.
 - `idea.md` — the original brief, kept as the record of the first thinking
 - `hooks/lastline.py` — the hook
 - `hooks/test_lastline.py` — drives it with crafted payloads; `python3 hooks/test_lastline.py`
-- `.claude/settings.json` — how it is registered
 
 Pre-v0. Working: the picker, intensity and hint levels, the fire/resolve round trip, the
 verdict, the survival flash.
