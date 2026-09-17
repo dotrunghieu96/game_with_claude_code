@@ -170,7 +170,7 @@ def pick_model(ti, candidates):
         log(f"picker declined ({data.get('line')!r})")
         return None
     log(f"picker chose {idx}: {data.get('why')!r} alt={data.get('alternative')!r}")
-    return idx, lines[idx], (data.get("alternative") or "")
+    return idx, lines[idx], (data.get("alternative") or ""), (data.get("why") or "")
 
 
 # ---------- grading ----------
@@ -242,7 +242,7 @@ def call_sites(name, skip_path, limit=6):
     return hits
 
 
-def puzzle(ti, idx, line):
+def puzzle(ti, idx, line, why=""):
     """Before/after, because a hole with no intent is unwritable (dogfood, 2026-09-17)."""
     path = ti.get("file_path", "?")
     lang, cmt = LANGS.get(os.path.splitext(path)[1], ("", "#"))
@@ -263,6 +263,7 @@ def puzzle(ti, idx, line):
         used = f"\n\n`{name}` is not referenced anywhere else in the project."
     else:
         used = ""
+    fork = f" The fork the picker saw: {why}." if why else ""
     return f"""LASTLINE is holding this edit. Do not retry it as-is.
 
 Ask the human to write one line of it themselves. Show them this and nothing else:
@@ -282,11 +283,13 @@ after
 {used}
 
 Relay all of the above exactly as it is, fences and language tag included, so
-they render highlighted. Above them, give ONE short sentence saying what the whole edit is for. Change-level
-only - the goal you were asked to achieve. This is the only context they get.
+they render highlighted. Above them, give ONE short sentence saying what the whole edit is
+for, then hints: what the surrounding lines expect, which types are in play, and what the
+competing options are.{fork} Name the options, do not pick one.
 
 Rules:
-- Do not write the line for them. Hints are fine - typing it is the point, not guessing it.
+- Do not write the line for them. Hint as much as they ask for - typing it is the point, not
+  guessing it. A blank they cannot approach is a failure of the hint, not a win.
 - Ask once, then stop and wait for their answer.
 - When they answer, re-apply this exact Edit with their line in place of the blank,
   changing nothing else.
@@ -401,7 +404,7 @@ def main():
     if chosen is None:
         allow("no decision line")
 
-    idx, line, alt = chosen
+    idx, line, alt, why = chosen
     spend()
     state["pending"] = {
         "file_path": path, "old_string": ti.get("old_string", ""),
@@ -410,7 +413,7 @@ def main():
     }
     save_state(session_id, state)
     log(f"FIRED on {path}:{idx} {line.strip()!r} (budget left {left - 1})")
-    respond("deny", puzzle(ti, idx, line))
+    respond("deny", puzzle(ti, idx, line, why))
 
 
 if __name__ == "__main__":
