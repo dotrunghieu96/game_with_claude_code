@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/dotrunghieu96/game_with_claude_code/compare/lastline-v0.1.0...lastline-v0.1.1) (2026-09-17)
+
+
+### Bug Fixes
+
+* point the install at the tag that exists ([612c450](https://github.com/dotrunghieu96/game_with_claude_code/commit/612c45055fde298547901e6a6b2f2a205f13c2d6))
+
 ## 0.1.0 (2026-09-17)
 
 
