@@ -6,7 +6,8 @@
       "package-name": "lastline",
       "extra-files": [
         "hooks/lastline.py"
-      ]
+      ],
+      "bump-minor-pre-major": true
     }
   }
 }
