@@ -336,21 +336,23 @@ def main():
     state = load_state(session_id)
 
     pending = state.get("pending")
-    if pending:
-        fresh = (datetime.datetime.now().timestamp() - pending["at"]) < PENDING_TTL
-        if fresh and pending["file_path"] == path and pending["old_string"] == ti.get("old_string"):
-            agent_text, reveal = resolve(pending, ti, session_id, state)
-            allow(agent_text, system=reveal)
-        if not fresh:
-            state.pop("pending", None)
-            save_state(session_id, state)
-            log("pending expired")
+    fresh = bool(pending) and (datetime.datetime.now().timestamp() - pending["at"]) < PENDING_TTL
+    if fresh and pending["file_path"] == path and pending["old_string"] == ti.get("old_string"):
+        agent_text, reveal = resolve(pending, ti, session_id, state)
+        allow(agent_text, system=reveal)
+    if pending and not fresh:
+        state.pop("pending", None)
+        save_state(session_id, state)
+        log("pending expired")
 
     if SKIP_FILES.search(path) or not path:
         allow("skipped file")
     cands = added_lines(ti.get("old_string", ""), ti.get("new_string", ""))
     if len(cands) < 2:
         allow(f"too small ({len(cands)} added)")
+
+    if fresh:
+        allow("a puzzle is already pending")  # stacking them loses the first
 
     # gate before the model call, or it is fifty calls a day to spend three
     _, left = budget_left()
