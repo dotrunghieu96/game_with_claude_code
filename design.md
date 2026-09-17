@@ -134,9 +134,9 @@ a day to spend three.
 1. local: diff size, file type, generated/lockfile/format-only, cooldown
 2. budget: any left today? no → allow, log, exit
 3. model: name the decision line, or say there isn't one → no line means allow and log
-4. cut, prompt on `/dev/tty`, read the line
-5. apply with the human's line, print the agent's beside it, small mark if they agree
-6. report authorship to the agent on stdout, log the outcome, remember `file:line`
+4. cut, deny the edit, and hand the agent the puzzle to relay
+5. on the re-applied edit: grade it, and send the reveal out as a `systemMessage`
+6. tell the agent the line is the human's, log the outcome, remember it if they diverged
 7. at `Stop`: for each remembered line, still there → flash; changed back → say nothing
 
 Any failure at any step — no tty, model timeout, malformed response — allows the edit
@@ -150,6 +150,15 @@ silently. The hook never hangs a session and never blocks on a wrong line.
   several. Probably `Edit` only in v0.
 - Wording of the three verdicts, given *different* must not read as a mark.
 - What the flash actually looks like in a terminal. It has to feel free, not earned.
+- **The premise assumes decay, and LLM-first code has none.** The brief bet on a muscle
+  that atrophied - a line you could derive but had not thought about. In code the agent
+  wrote end to end you never had a model of the system, so the blank is an exam on
+  material never covered, and wider context does not help because what is missing is not
+  local. Observed 2026-09-17: the tool worked on `lastline.py`, the one file being read,
+  and failed on a file that was only ever generated. Leading candidate if this bites
+  again: ask for intent in plain words rather than syntax, and grade it against the two
+  lines the picker already produces. Not built - the line-writing path is still being
+  tried.
 
 ## 10. Spikes
 
@@ -192,6 +201,10 @@ have derived it unaided is secondary. This retires the anti-hint machinery and m
 unanswerable — is it a return, what type, what language. Decided: keep the blank bare and
 widen the context (full before/after, call sites of the enclosing function) rather than
 leave a stub. Tension to watch: this collides with "one screen, no scrolling".
+
+**Pending state dies with the session.** An in-flight puzzle is keyed on `session_id`, so
+when the session identity changes underneath you the answer has nowhere to land and a
+fresh puzzle fires instead. Seen once, 2026-09-17. Not fixed.
 
 **The agent must state the intent.** One sentence, change-level, above the block. Without
 it the human is reading a diff of code they have never seen.

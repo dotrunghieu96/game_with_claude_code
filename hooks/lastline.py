@@ -182,6 +182,15 @@ def norm(s):
 CMP = re.compile(r"<=|>=|==|!=|<|>")
 
 
+def survived(entry) -> bool:
+    """Did their line outlast the session? Line numbers drift, so match on content."""
+    try:
+        body = open(entry["file"]).read()
+    except OSError:
+        return False
+    return any(norm(l) == entry["line"] for l in body.splitlines())
+
+
 def verdict(theirs, ours):
     if norm(theirs) == norm(ours):
         return "same"
@@ -211,21 +220,23 @@ def call_sites(name, skip_path, limit=6):
     """A blank is only writable if you can see what uses it (dogfood, 2026-09-17)."""
     root = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
     try:
-        out = subprocess.run(
-            ["grep", "-rnI", "--exclude-dir=.git", "--exclude-dir=node_modules",
-             "--exclude-dir=.venv", f"\\b{name}\\b", root],
-            capture_output=True, text=True, timeout=3).stdout
+        tracked = subprocess.run(["git", "-C", root, "ls-files"],
+                                 capture_output=True, text=True, timeout=3).stdout.split()
+        if not tracked:
+            return []
+        out = subprocess.run(["grep", "-nI", f"\\b{name}\\b"] + tracked,
+                             capture_output=True, text=True, timeout=3, cwd=root).stdout
     except Exception:
         return []
     hits = []
     for ln in out.splitlines():
         f, _, rest = ln.partition(":")
-        if os.path.abspath(f) == os.path.abspath(skip_path):
+        if os.path.abspath(os.path.join(root, f)) == os.path.abspath(skip_path):
             continue
         n, _, text = rest.partition(":")
         if DEFN.match(text):
             continue
-        hits.append(f"{os.path.relpath(f, root)}:{n}  {text.strip()[:90]}")
+        hits.append(f"{f}:{n}  {text.strip()[:90]}")
         if len(hits) >= limit:
             break
     return hits
@@ -324,11 +335,30 @@ an objection and let them decide. Do not quietly edit it back.{tamper_note}
     return agent, reveal
 
 
+def on_stop(payload):
+    """Session over. A line of theirs still standing is the only loud moment."""
+    session_id = payload.get("session_id", "")
+    state = load_state(session_id)
+    still = [e for e in state.get("standing", []) if survived(e)]
+    try:
+        os.remove(state_path(session_id))
+    except OSError:
+        pass
+    if not still:
+        sys.exit(0)
+    rows = "\n".join(f"    {os.path.basename(e['file'])}   {e['line']}" for e in still)
+    print(json.dumps({"systemMessage": f"  lastline - still standing\n{rows}"}))
+    sys.exit(0)
+
+
 def main():
     try:
         payload = json.load(sys.stdin)
     except Exception:
         allow("unreadable payload")
+
+    if payload.get("hook_event_name") == "Stop":
+        on_stop(payload)
 
     ti = payload.get("tool_input", {})
     session_id = payload.get("session_id", "")
