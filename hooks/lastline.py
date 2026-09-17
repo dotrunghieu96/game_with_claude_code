@@ -15,6 +15,8 @@ import sys
 import subprocess
 import tempfile
 
+VERSION = "0.0.0"  # x-release-please-version
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 LOG = os.path.join(HERE, "lastline.log")
 BUDGET_FILE = os.environ.get("LASTLINE_BUDGET_FILE") or os.path.join(HERE, ".budget.json")
@@ -54,7 +56,7 @@ def log(msg):
 
 
 def respond(decision, reason, system=None):
-    log(f"{decision}: {reason.splitlines()[0][:120]}")
+    log(f"{decision} v{VERSION}: {reason.splitlines()[0][:120]}")
     out = {"hookSpecificOutput": {
         "hookEventName": "PreToolUse",
         "permissionDecision": decision,

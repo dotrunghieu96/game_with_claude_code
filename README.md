@@ -23,6 +23,8 @@ curl -o hooks/lastline.py https://raw.githubusercontent.com/dotrunghieu96/game_w
 chmod +x hooks/lastline.py
 ```
 
+Swap `master` for a tag from [Releases](../../releases) to pin a version.
+
 ```json
 {
   "hooks": {
@@ -79,6 +81,19 @@ the line for you.
 
 Raw overrides, if the presets do not fit: `LASTLINE_BUDGET`, `LASTLINE_COOLDOWN` (seconds),
 `LASTLINE_MAX_ADDED`, `LASTLINE_MODEL`, `LASTLINE_PICK_TIMEOUT`.
+
+## Releasing
+
+Commit subjects are [Conventional Commits](https://www.conventionalcommits.org) —
+`feat:` bumps the minor, `fix:` the patch, `feat!:` or a `BREAKING CHANGE:` footer the
+major. Anything else (`docs:`, `chore:`, `refactor:`) ships without a release. Bodies are
+still prose; only the subject line has to conform.
+
+On push to `master`, release-please opens or updates a release PR that accrues the
+changelog. Merging it tags, cuts the GitHub release, and bumps `VERSION` in the hook —
+which the log prints beside every decision, so a log line says which version made it.
+
+`CHANGELOG.md`, `version.txt` and `VERSION` belong to release-please. Do not hand-edit them.
 
 ## Layout
 
