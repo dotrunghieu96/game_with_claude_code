@@ -258,3 +258,48 @@ Code lives in `hooks/lastline.py`, registered in `.claude/settings.json`, exerci
 `hooks/test_lastline.py`. Working: model picker, intensity and hint dials, the oversize
 deny, budget and cooldown, fire/resolve round trip, three verdicts with off-by-one forced
 to *different*, the `Stop`-hook survival flash, decision log.
+
+## 12. Judgment calls, not one blank — 2026-09-18
+
+Guessing was the wrong frame. You do not guess an agent's output, you steer and harden it,
+and one blank line with no surroundings is the sky seen from the bottom of a well. So the
+hook now marks the forks in the whole section and names what it rejected at each, and the
+act it asks for is an accept you own rather than a line you produce. `fix N` keeps the old
+mechanic, aimed where you care instead of wherever the picker landed.
+
+Measured over 40 hunks of real history from two repos, 26 of them code:
+
+- calls per edit after merging twins: 1 call ×16, 2 calls ×12, 3 calls ×1
+- median edit, 7 added lines; the picker declined 4 outright
+- twin merging removed 2 of 32 calls, so double-counting is rare, not the rule
+
+The marks are worth reading: an abandoned game finished with `None` instead of
+`Some(other_color)`, so the player who stayed loses their walkover win; a `LEFT JOIN`
+that would have dropped rows as an inner join. Windowing to ±4 lines around each mark cut
+a 60-line section to 16 and settles the tension left open in §11.
+
+Open, none of it fixed:
+
+- **The receipt has no channel.** `ok` rides on the agent re-applying the identical edit,
+  so the hook cannot tell which call you stood behind, and any out-of-band write to the
+  region kills the pending puzzle silently. Seen for real, 2026-09-18.
+- **A stuck puzzle opens the gate.** While one is pending but unmatched, every other edit
+  is allowed unchecked until the 10-minute TTL expires.
+- **Marks anchor to a physical line.** A multi-line statement gets marked on its opening
+  line (`broadcast(`) and the alternative is then a whole different call. Needs the mark to
+  span the statement.
+
+## 13. Both modes — 2026-09-18
+
+Dogfooding §12 the same afternoon: the accept prompt landed on an edit with one real fork
+and read as a form to sign. The blank was not the mistake; blanking a line that had no
+fork in it was. So the mode follows the count. One call is a line worth typing — the old
+before/after render, the hole, the hints. Two or three is a section worth reading — marks,
+`ok`/`why N`/`fix N`.
+
+Nothing about the picker changes: it still marks up to three, and the §12 numbers say that
+lands on the blank roughly half the time.
+
+Follow-on: an untouched re-apply now means "passed on it" when there was one call and
+"stood behind them" when there were several, so the receipt stops claiming a read that
+never happened.

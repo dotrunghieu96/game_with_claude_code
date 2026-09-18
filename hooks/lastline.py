@@ -130,30 +130,31 @@ def added_lines(old, new):
     return out
 
 
-PICK_PROMPT = """You are choosing one line of a code change for a human to write themselves.
+PICK_PROMPT = """You are marking the judgment calls in a code change, for a human about to accept it.
 
-Pick a line where a competent engineer could reasonably have written something DIFFERENT,
-and the difference would matter. The test is not "is this line important" - it is "was
-there a real fork here". A boundary that could defensibly go either way, a branch that
-could handle the error differently, an ordering that could be reversed.
+A judgment call is a line where a competent engineer could reasonably have written
+something DIFFERENT, and the difference would matter. Not "is this line important" -
+"was there a real fork here". A boundary that could defensibly go either way, a branch
+that could handle the error differently, an ordering that could be reversed.
 
-Reject a line if:
+Not a judgment call:
 - there is only one sensible way to write it
-- writing it needs recall of an exact name, signature, argument order or literal
-- it is an import, a log, a comment, boilerplate, or fixed by the line above it
+- an import, a log, a comment, boilerplate, or fixed by the line above it
+- a different spelling of the same behaviour
 
-Proof that a fork exists: you must supply `alternative`, a different line a good engineer
-might plausibly have written instead - AND the two must behave observably differently.
-A different spelling is not a fork. Nudging a comparison by one only counts when the one
-is worth something:
+For each call you must supply `alternative`, a different line a good engineer might
+plausibly have written instead - AND the two must behave observably differently:
   `attempt <= max_retries` vs `<` - counts, that is a whole extra retry
   `elapsed <= COOLDOWN` vs `<`  - does not count, that is a microsecond
-If your alternative would not change what anyone sees, there was no decision - return
-{"line": null}.
+
+Mark AT MOST 3, fewest that are real. Everything you do not mark is being declared
+mechanical, so do not pad. Also give `intent`: one sentence, what this change is for.
 
 Reply with JSON only, no prose:
-{"line": <0-based index into AFTER>, "why": "<8 words max>", "alternative": "<the other line>"}
-or {"line": null}
+{"intent": "<one sentence>", "calls": [{"line": <0-based index into AFTER>,
+ "why": "<12 words max, what breaks if the alternative ships>",
+ "alternative": "<the other line>"}]}
+or {"calls": []}
 
 FILE: %s
 
@@ -163,6 +164,19 @@ BEFORE:
 AFTER (indexed):
 %s
 """
+
+
+def merge_twins(calls):
+    """Neighbours that read alike are one decision the picker counted twice."""
+    keep = []
+    for c in calls:
+        twin = next((k for k in keep if abs(k["idx"] - c["idx"]) <= 2 and
+                     difflib.SequenceMatcher(None, norm(k["line"]), norm(c["line"])).ratio() >= 0.6), None)
+        if twin:
+            log(f"merged call {c['idx']} into {twin['idx']}")
+        else:
+            keep.append(c)
+    return keep
 
 
 def pick_model(ti, candidates):
@@ -181,12 +195,18 @@ def pick_model(ti, candidates):
     except Exception as e:
         log(f"picker failed {e!r}")
         return None
-    idx = data.get("line")
-    if not isinstance(idx, int) or idx not in eligible:
-        log(f"picker declined ({data.get('line')!r})")
+    calls = []
+    for c in (data.get("calls") or [])[:3]:
+        i = c.get("line")
+        if isinstance(i, int) and i in eligible and (c.get("alternative") or "").strip():
+            calls.append({"idx": i, "line": lines[i], "alt": c["alternative"],
+                          "why": c.get("why") or ""})
+    calls = merge_twins(calls)
+    if not calls:
+        log("picker declined (no calls)")
         return None
-    log(f"picker chose {idx}: {data.get('why')!r} alt={data.get('alternative')!r}")
-    return idx, lines[idx], (data.get("alternative") or ""), (data.get("why") or "")
+    log(f"picker marked {[c['idx'] for c in calls]}")
+    return calls, (data.get("intent") or "")
 
 
 # ---------- grading ----------
@@ -259,15 +279,13 @@ def call_sites(name, skip_path, limit=6):
 
 
 HINT_BLOCKS = {
-    "veteran": """Above them, give ONE short sentence saying what the whole edit is for.
-Change-level only - the goal you were asked to achieve.{fork} That is all they get unasked.""",
-    "normal": """Above them, give ONE short sentence saying what the whole edit is for, then
-hints: what the surrounding lines expect, which types are in play, and what the competing
-options are.{fork} Name the options, do not pick one.""",
-    "amateur": """Above them, say in plain words what the whole edit is for and what this one
-line has to do - what it receives, what the lines after it need from it. Then name the
-competing options and, for each, what someone running the code would actually see
-differently.{fork} Name them all, do not pick one.""",
+    "veteran": """Relay the calls and their alternatives as written.{fork} Nothing more
+unasked.""",
+    "normal": """With each call, add what the surrounding lines expect of it and which
+types are in play.{fork} Name the competing options, do not pick one.""",
+    "amateur": """With each call, say in plain words what that line has to do - what it
+receives, what the lines after it need from it - and for each alternative, what someone
+running the code would actually see differently.{fork} Name them all, do not pick one.""",
 }
 
 
@@ -276,32 +294,31 @@ def hint_block(why=""):
     return HINT_BLOCKS.get(HINTS, HINT_BLOCKS["normal"]).format(fork=fork)
 
 
-def puzzle(ti, idx, line, why=""):
-    """Before/after, because a hole with no intent is unwritable (dogfood, 2026-09-17)."""
+def puzzle(ti, calls, intent=""):
+    """One fork is a line worth typing; several are a section worth reading."""
+    return blank(ti, calls[0], intent) if len(calls) == 1 else marks(ti, calls, intent)
+
+
+def blank(ti, call, intent=""):
+    """Before/after with the one line cut out, because a hole with no intent is unwritable."""
     path = ti.get("file_path", "?")
     lang, cmt = LANGS.get(os.path.splitext(path)[1], ("", "#"))
     lines = ti["new_string"].splitlines()
+    idx = call["idx"]
     after = []
     for i, text in enumerate(lines[:60]):
-        if i == idx:
-            indent = re.match(r"\s*", text).group()
-            after.append(f"{indent}____________________  {cmt} <- you")
-        else:
-            after.append(text)
+        indent = re.match(r"\s*", text).group()
+        after.append(f"{indent}____________________  {cmt} <- you" if i == idx else text)
     before = ti.get("old_string", "").splitlines()[:60] or ["(new file)"]
     name = enclosing_name(lines, idx)
     sites = call_sites(name, path) if name else []
-    if name and sites:
-        used = "\n\nwhere `{}` is used\n```\n{}\n```".format(name, "\n".join(sites))
-    elif name:
-        used = f"\n\n`{name}` is not referenced anywhere else in the project."
-    else:
-        used = ""
+    used = ("\n\nwhere `{}` is used\n```\n{}\n```".format(name, "\n".join(sites))
+            if sites else "")
     return f"""LASTLINE is holding this edit. Do not retry it as-is.
 
 Ask the human to write one line of it themselves. Show them this and nothing else:
 
-`{path}`
+`{path}` - {intent}
 
 before
 ```{lang}
@@ -312,11 +329,10 @@ after
 ```{lang}
 {chr(10).join(after)}
 ```
-
 {used}
 
 Relay all of the above exactly as it is, fences and language tag included, so
-they render highlighted. {hint_block(why)}
+they render highlighted. {hint_block(call.get("why", ""))}
 
 Rules:
 - Do not write the line for them. Hint as much as they ask for - typing it is the point, not
@@ -328,45 +344,110 @@ Rules:
 """
 
 
-def resolve(pending, ti, session_id, state):
-    ours = pending["line"]
-    theirs_all = ti["new_string"].splitlines()
-    idx = pending["idx"]
-    theirs = theirs_all[idx] if idx < len(theirs_all) else ""
+def marks(ti, calls, intent=""):
+    """The whole section, with the forks marked. You accept by naming one."""
+    path = ti.get("file_path", "?")
+    lang, cmt = LANGS.get(os.path.splitext(path)[1], ("", "#"))
+    lines = ti["new_string"].splitlines()
+    marked = {c["idx"]: n for n, c in enumerate(calls, 1)}
+    # one screen or it does not get read: +-4 lines around each mark, rest collapsed
+    keep = {j for i in marked for j in range(i - 4, i + 5)}
+    body, run = [], 0
+    for i, text in enumerate(lines):
+        if i in keep:
+            if run > 2:
+                body.append(f"  {cmt} ... {run} unmarked lines ...")
+                run = 0
+            elif run:
+                body.extend(f"  {t}" for t in lines[i - run:i])
+                run = 0
+            body.append(f"! {text}   {cmt} <- {marked[i]}" if i in marked else f"  {text}")
+        else:
+            run += 1
+    if run > 2:
+        body.append(f"  {cmt} ... {run} unmarked lines ...")
+    name = enclosing_name(lines, calls[0]["idx"])
+    sites = call_sites(name, path) if name else []
+    forks = "\n".join(
+        f"{n}. `{c['line'].strip()}`\n   vs `{c['alt'].strip()}` - {c['why']}"
+        for n, c in enumerate(calls, 1))
+    # "not referenced anywhere" is noise for a handler; only real sites earn the space
+    used = ("\n\nwhere `{}` is used\n```\n{}\n```".format(name, "\n".join(sites))
+            if sites else "")
+    n = len(calls)
+    hints = hint_block()
+    return f"""LASTLINE is holding this edit. Do not retry it as-is.
 
-    # the agent must have changed that line and nothing else
+Show the human this and nothing else, fences included, then stop and wait:
+
+`{path}` - {intent}
+
+{n} judgment calls. Everything unmarked is mechanical.
+
+```diff
+{chr(10).join(body)}
+```
+
+{forks}{used}
+
+    ok      you have read all {n} and stand behind them - the edit applies as written
+    why N   make me defend one before you decide
+    fix N   write one yourself instead of mine
+
+Rules:
+- Relay the block exactly, `diff` tag included, so it renders highlighted. {hints}
+- `why`: answer it straight - what the alternative would cost, whether theirs is better.
+  If they are right, say so. Then ask again. Do not re-apply the edit yet.
+- `ok`: re-apply this exact Edit unchanged.
+- `fix`: re-apply this exact Edit with their line replacing the call they named, nothing else changed.
+- Do not write a line for them, and do not talk them out of `why`.
+"""
+
+
+def resolve(pending, ti, session_id, state):
+    """They answered. Either they stood behind it, or they rewrote one call."""
+    calls = pending["calls"]
     a = pending["new_string"].splitlines()
-    b = list(theirs_all)
-    tampered = len(a) != len(b) or [i for i in range(min(len(a), len(b))) if a[i] != b[i]] not in ([], [idx])
-    if tampered and norm(theirs) != norm(ours):
+    b = ti["new_string"].splitlines()
+    changed = ([i for i in range(len(a)) if a[i] != b[i]] if len(a) == len(b) else None)
+    marked = {c["idx"]: c for c in calls}
+
+    if changed is None or any(i not in marked for i in (changed or [])) or len(changed or []) > 1:
         state["pending"]["at"] = datetime.datetime.now().timestamp()
         save_state(session_id, state)
-        respond("deny", "The rest of the edit changed. Re-apply the original with only "
-                        "their line swapped in, nothing else.")
+        respond("deny", "That is not the edit I held. Re-apply the original, changing at "
+                        "most one marked line. Nothing else.")
 
-    v = verdict(theirs, ours)
     state.pop("pending", None)
-    if v == "different":
-        state.setdefault("standing", []).append(
-            {"file": ti["file_path"], "line": norm(theirs), "idx": idx})
-    save_state(session_id, state)
-    log(f"resolved {v} tampered={tampered} theirs={norm(theirs)!r} ours={norm(ours)!r}")
+    if not changed:                                   # ok, or a blank they passed on
+        save_state(session_id, state)
+        log(f"resolved ok calls={[c['idx'] for c in calls]}")
+        rows = "\n".join(f"    {n}  {norm(c['line'])}" for n, c in enumerate(calls, 1))
+        if len(calls) == 1:
+            return ("Allowed unchanged - they passed on writing it. Do not raise it again.",
+                    "  lastline - passed\n" + rows)
+        return ("Allowed as written. They have read it and stood behind it - do not "
+                "re-explain the calls.",
+                "  lastline - yours now\n" + rows)
 
+    idx = changed[0]                                  # fix N
+    c = marked[idx]
+    theirs, ours = b[idx], c["line"]
+    v = verdict(theirs, ours)
+    state.setdefault("standing", []).append(
+        {"file": ti["file_path"], "line": norm(theirs), "idx": idx})
+    save_state(session_id, state)
+    log(f"resolved fix {idx} {v} theirs={norm(theirs)!r} ours={norm(ours)!r}")
     mark = {"same": "\n    \u2022 same", "close": "\n    \u2022 close", "different": ""}[v]
     rows = [f"    yours   {norm(theirs)}", f"    mine    {norm(ours)}"]
-    alt = norm(pending.get("alt", ""))
-    # the fork the picker saw - it is what makes a match mean anything
+    alt = norm(c.get("alt", ""))
     if alt and alt not in (norm(theirs), norm(ours)):
         rows.append(f"    or      {alt}")
-    reveal = "  lastline\n" + "\n".join(rows) + mark
-    tamper_note = "\n(NOTE: the rest of the edit changed too. Tell them.)" if tampered else ""
-    agent = f"""Allowed. Their line is in, and they have already been shown both versions -
-do not repeat them.
+    return ("""Allowed. Their line is in, and they have been shown both - do not repeat them.
 
 Their line is what shipped. It is intent, not a draft: if you think it is wrong, say so as
-an objection and let them decide. Do not quietly edit it back.{tamper_note}
-"""
-    return agent, reveal
+an objection and let them decide. Do not quietly edit it back.""",
+            "  lastline\n" + "\n".join(rows) + mark)
 
 
 def on_stop(payload):
@@ -450,16 +531,16 @@ leaves the file working - and apply them one at a time. Do not re-send this edit
     if chosen is None:
         allow("no decision line")
 
-    idx, line, alt, why = chosen
+    calls, intent = chosen
     spend()
     state["pending"] = {
         "file_path": path, "old_string": ti.get("old_string", ""),
-        "new_string": ti.get("new_string", ""), "idx": idx, "line": line, "alt": alt,
+        "new_string": ti.get("new_string", ""), "calls": calls, "intent": intent,
         "at": datetime.datetime.now().timestamp(),
     }
     save_state(session_id, state)
-    log(f"FIRED on {path}:{idx} {line.strip()!r} (budget left {left - 1})")
-    respond("deny", puzzle(ti, idx, line, why))
+    log(f"FIRED on {path} calls={[c['idx'] for c in calls]} (budget left {left - 1})")
+    respond("deny", puzzle(ti, calls, intent))
 
 
 if __name__ == "__main__":
