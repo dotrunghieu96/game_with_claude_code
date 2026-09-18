@@ -1,14 +1,25 @@
 # Lastline
 
-A Claude Code hook that cuts one line out of an edit and makes you write it.
+A Claude Code hook that marks the judgment calls in an edit and makes you stand behind them.
 
-The agent is about to apply a change. A `PreToolUse` hook picks one line where a competent
-engineer could reasonably have written something else, blanks it, and blocks the edit. You
-type the line. Yours is what ships, and you are shown what the agent would have written.
+The agent is about to apply a change. A `PreToolUse` hook marks up to three lines where a
+competent engineer could reasonably have written something else, shows each against the
+alternative it rejected, and blocks the edit. Everything it does not mark is declared
+mechanical, and the context around the marks is windowed so the whole thing stays on one
+screen.
 
-Not a quiz — you cannot write the missing line without reading the change, which is the
-point. At most three a day by default, with a cooldown, and it never blocks on a wrong
-answer.
+Not a quiz — you cannot answer without reading the change, which is the point. At most
+three a day by default, with a cooldown, and it never blocks on a wrong answer.
+
+## The moves
+
+| you type | what happens |
+|---|---|
+| `ok` | you have read them and stand behind them; the edit applies as written |
+| `why N` | the agent defends call N — what the alternative costs, whether yours is better — then asks again |
+| `fix N` | you write line N yourself; yours ships, and you are shown what the agent would have written |
+
+With one call marked the numbers go away: `ok`, `why`, `fix`.
 
 ## Setup
 
@@ -70,17 +81,17 @@ each". Sending the same one twice gets it through — the hook asks once, it doe
 
 ## Hints
 
-How much the agent tells you before you type. Independent of intensity: pick by what you
+How much the agent tells you before you answer. Independent of intensity: pick by what you
 know about the code, not by how often you want interrupting.
 
 | `LASTLINE_HINTS` | you get |
 |---|---|
-| `veteran` | one sentence of intent, the before/after, the call sites |
-| `normal` (default) | + types in play, what the surrounding lines expect, the options named |
-| `amateur` | + what the line must do in plain words, and what each option changes at runtime |
+| `veteran` | the intent, the marked calls and their alternatives, the call sites |
+| `normal` (default) | + types in play, what the surrounding lines expect |
+| `amateur` | + what each line must do in plain words, and what each alternative changes at runtime |
 
 At every level the agent will hint further if you ask, and at none of them will it write
-the line for you.
+a line for you. `why N` is always available regardless of the level.
 
 Both go in the `env` block of the same `settings.json`. Raw overrides, if the presets
 do not fit: `LASTLINE_BUDGET`, `LASTLINE_COOLDOWN` (seconds),
