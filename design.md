@@ -288,3 +288,18 @@ Open, none of it fixed:
 - **Marks anchor to a physical line.** A multi-line statement gets marked on its opening
   line (`broadcast(`) and the alternative is then a whole different call. Needs the mark to
   span the statement.
+
+## 13. Both modes — 2026-09-18
+
+Dogfooding §12 the same afternoon: the accept prompt landed on an edit with one real fork
+and read as a form to sign. The blank was not the mistake; blanking a line that had no
+fork in it was. So the mode follows the count. One call is a line worth typing — the old
+before/after render, the hole, the hints. Two or three is a section worth reading — marks,
+`ok`/`why N`/`fix N`.
+
+Nothing about the picker changes: it still marks up to three, and the §12 numbers say that
+lands on the blank roughly half the time.
+
+Follow-on: an untouched re-apply now means "passed on it" when there was one call and
+"stood behind them" when there were several, so the receipt stops claiming a read that
+never happened.

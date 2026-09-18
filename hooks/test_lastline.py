@@ -17,7 +17,9 @@ BUDGET = tempfile.mktemp(suffix="-budget.json")
 
 
 def run(payload, **env):
-    e = dict(os.environ, LASTLINE_BUDGET_FILE=BUDGET, **env)
+    # the hook's own knobs leak in from the session that runs the suite
+    base = {k: v for k, v in os.environ.items() if not k.startswith("LASTLINE_")}
+    e = dict(base, LASTLINE_BUDGET_FILE=BUDGET, **env)
     r = subprocess.run([sys.executable, HOOK], input=json.dumps(payload),
                        capture_output=True, text=True, env=e, timeout=60)
     return json.loads(r.stdout or "{}")
@@ -95,7 +97,9 @@ def main():
     ok &= check("collapsed block is not the whole file", "step20()" not in out)
     ok &= check("two calls number the moves", "why N" in out and "all 2" in out)
     one = mod.puzzle(ti, two[:1], "an intent")
-    ok &= check("one call drops the number", "why  " in one and "why N" not in one)
+    ok &= check("one call becomes a blank they type", "____" in one and "<- you" in one)
+    ok &= check("the blank keeps before and after", "\nbefore\n" in one and "\nafter\n" in one)
+    ok &= check("the blank has no moves to pick", "why N" not in one and "    ok " not in one)
 
     ok &= check("twins merge", len(mod.merge_twins([
         {"idx": 4, "line": "    a_ready = False", "alt": "x", "why": ""},
@@ -110,12 +114,26 @@ def main():
     json.dump({"pending": {"file_path": e["tool_input"]["file_path"],
                            "old_string": e["tool_input"]["old_string"],
                            "new_string": e["tool_input"]["new_string"],
-                           "calls": [{"idx": 2, "line": "    x1 = 1", "alt": "x1 = 2", "why": "w"}],
+                           "calls": [{"idx": 2, "line": "    x1 = 1", "alt": "x1 = 2", "why": "w"},
+                                     {"idx": 3, "line": "    x2 = 2", "alt": "x2 = 3", "why": "w"}],
                            "intent": "i", "at": __import__("datetime").datetime.now().timestamp()}},
               open(mod.state_path(sid), "w"))
     out = run(e, LASTLINE_INTENSITY="annoying")
     ok &= check("ok allows the edit", decision(out) == "allow")
     ok &= check("ok prints the receipt", "yours now" in out.get("systemMessage", ""))
+
+    # --- a blank they passed on: same untouched edit, one call, different receipt ---
+    sid = fresh()
+    e = edit(5, sid)
+    json.dump({"pending": {"file_path": e["tool_input"]["file_path"],
+                           "old_string": e["tool_input"]["old_string"],
+                           "new_string": e["tool_input"]["new_string"],
+                           "calls": [{"idx": 2, "line": "    x1 = 1", "alt": "x1 = 2", "why": "w"}],
+                           "intent": "i", "at": __import__("datetime").datetime.now().timestamp()}},
+              open(mod.state_path(sid), "w"))
+    out = run(e, LASTLINE_INTENSITY="annoying")
+    ok &= check("passing on the blank still allows", decision(out) == "allow")
+    ok &= check("passing says passed, not stood behind", "passed" in out.get("systemMessage", ""))
 
     print("\n" + ("all pass" if ok else "FAILURES"))
     sys.exit(0 if ok else 1)

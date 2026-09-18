@@ -295,6 +295,56 @@ def hint_block(why=""):
 
 
 def puzzle(ti, calls, intent=""):
+    """One fork is a line worth typing; several are a section worth reading."""
+    return blank(ti, calls[0], intent) if len(calls) == 1 else marks(ti, calls, intent)
+
+
+def blank(ti, call, intent=""):
+    """Before/after with the one line cut out, because a hole with no intent is unwritable."""
+    path = ti.get("file_path", "?")
+    lang, cmt = LANGS.get(os.path.splitext(path)[1], ("", "#"))
+    lines = ti["new_string"].splitlines()
+    idx = call["idx"]
+    after = []
+    for i, text in enumerate(lines[:60]):
+        indent = re.match(r"\s*", text).group()
+        after.append(f"{indent}____________________  {cmt} <- you" if i == idx else text)
+    before = ti.get("old_string", "").splitlines()[:60] or ["(new file)"]
+    name = enclosing_name(lines, idx)
+    sites = call_sites(name, path) if name else []
+    used = ("\n\nwhere `{}` is used\n```\n{}\n```".format(name, "\n".join(sites))
+            if sites else "")
+    return f"""LASTLINE is holding this edit. Do not retry it as-is.
+
+Ask the human to write one line of it themselves. Show them this and nothing else:
+
+`{path}` - {intent}
+
+before
+```{lang}
+{chr(10).join(before)}
+```
+
+after
+```{lang}
+{chr(10).join(after)}
+```
+{used}
+
+Relay all of the above exactly as it is, fences and language tag included, so
+they render highlighted. {hint_block(call.get("why", ""))}
+
+Rules:
+- Do not write the line for them. Hint as much as they ask for - typing it is the point, not
+  guessing it. A blank they cannot approach is a failure of the hint, not a win.
+- Ask once, then stop and wait for their answer.
+- When they answer, re-apply this exact Edit with their line in place of the blank,
+  changing nothing else.
+- If they say skip or decline, re-apply this exact Edit unchanged.
+"""
+
+
+def marks(ti, calls, intent=""):
     """The whole section, with the forks marked. You accept by naming one."""
     path = ti.get("file_path", "?")
     lang, cmt = LANGS.get(os.path.splitext(path)[1], ("", "#"))
@@ -325,16 +375,14 @@ def puzzle(ti, calls, intent=""):
     used = ("\n\nwhere `{}` is used\n```\n{}\n```".format(name, "\n".join(sites))
             if sites else "")
     n = len(calls)
-    hints = hint_block(calls[0]["why"] if n == 1 else "")
-    # a number to type is friction when there is nothing to pick between
-    a = "" if n == 1 else " N"
+    hints = hint_block()
     return f"""LASTLINE is holding this edit. Do not retry it as-is.
 
 Show the human this and nothing else, fences included, then stop and wait:
 
 `{path}` - {intent}
 
-{n} judgment call{"s" if n > 1 else ""}. Everything unmarked is mechanical.
+{n} judgment calls. Everything unmarked is mechanical.
 
 ```diff
 {chr(10).join(body)}
@@ -343,8 +391,8 @@ Show the human this and nothing else, fences included, then stop and wait:
 {forks}{used}
 
     ok      you have read all {n} and stand behind them - the edit applies as written
-    why{a}   make me defend one before you decide
-    fix{a}   write one yourself instead of mine
+    why N   make me defend one before you decide
+    fix N   write one yourself instead of mine
 
 Rules:
 - Relay the block exactly, `diff` tag included, so it renders highlighted. {hints}
@@ -371,10 +419,13 @@ def resolve(pending, ti, session_id, state):
                         "most one marked line. Nothing else.")
 
     state.pop("pending", None)
-    if not changed:                                   # ok N
+    if not changed:                                   # ok, or a blank they passed on
         save_state(session_id, state)
         log(f"resolved ok calls={[c['idx'] for c in calls]}")
         rows = "\n".join(f"    {n}  {norm(c['line'])}" for n, c in enumerate(calls, 1))
+        if len(calls) == 1:
+            return ("Allowed unchanged - they passed on writing it. Do not raise it again.",
+                    "  lastline - passed\n" + rows)
         return ("Allowed as written. They have read it and stood behind it - do not "
                 "re-explain the calls.",
                 "  lastline - yours now\n" + rows)

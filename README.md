@@ -8,10 +8,16 @@ alternative it rejected, and blocks the edit. Everything it does not mark is dec
 mechanical, and the context around the marks is windowed so the whole thing stays on one
 screen.
 
+When only one line in the change is a real fork, you get that line as a blank instead:
+the edit before and after, the one line cut out, and hints. You type it, yours ships, and
+you are shown what the agent would have written.
+
 Not a quiz — you cannot answer without reading the change, which is the point. At most
 three a day by default, with a cooldown, and it never blocks on a wrong answer.
 
 ## The moves
+
+Two or more calls marked:
 
 | you type | what happens |
 |---|---|
@@ -19,7 +25,7 @@ three a day by default, with a cooldown, and it never blocks on a wrong answer.
 | `why N` | the agent defends call N — what the alternative costs, whether yours is better — then asks again |
 | `fix N` | you write line N yourself; yours ships, and you are shown what the agent would have written |
 
-With one call marked the numbers go away: `ok`, `why`, `fix`.
+One call: no moves to pick — write the line, or say skip and the edit applies as written.
 
 ## Setup
 
